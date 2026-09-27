@@ -876,3 +876,71 @@ def test_time_unit() -> None:
 )
 def test_rounding_by_fmt(fmt: str, value: float, expected: float) -> None:
     assert time._rounding_by_fmt(fmt, value) == pytest.approx(expected)
+
+
+def test_precisedelta_negative_delta_uses_absolute_value() -> None:
+    """A negative timedelta is rendered as a positive time distance.
+
+    ``_abs_timedelta()`` deliberately drops the sign ("always representing
+    a time distance") and ``precisedelta`` has no notion of tense, so the
+    sign is lost silently. Suppressing hours/minutes does not matter at
+    microsecond scale: nothing folds down because the delta only occupies
+    the smallest unit.
+
+    Judgment: the implementation behaves as designed; the test pins the
+    absolute-value rule.
+    """
+    assert (
+        humanize.precisedelta(
+            dt.timedelta(microseconds=-1),
+            minimum_unit="microseconds",
+            suppress=("hours", "minutes"),
+        )
+        == "1 microsecond"
+    )
+
+
+@pytest.mark.parametrize(
+    "val, min_unit, suppress, expected",
+    [
+        # Suppressing a larger unit folds its value down into the lower
+        # units: 2 hours become 120 extra minutes.
+        (
+            dt.timedelta(hours=2, minutes=30),
+            "seconds",
+            ["hours"],
+            "150 minutes",
+        ),
+        # Suppressing the minimum unit itself bumps the minimum UP to the
+        # next unsuppressed unit, and the value is re-expressed (and
+        # rounded per format) in that unit.
+        (
+            dt.timedelta(minutes=90),
+            "minutes",
+            ["minutes"],
+            "1.50 hours",
+        ),
+        # Both directions at once: hours fold down, but minutes are
+        # suppressed too, so everything lands in seconds.
+        (
+            dt.timedelta(hours=1, minutes=1),
+            "seconds",
+            ["hours", "minutes"],
+            "3660 seconds",
+        ),
+        # Units below the minimum are always suppressed implicitly; the
+        # sub-second remainder rounds into the minimum unit.
+        (
+            dt.timedelta(seconds=1, microseconds=500000),
+            "seconds",
+            [],
+            "1.50 seconds",
+        ),
+    ],
+)
+def test_precisedelta_suppress_fallback_order(
+    val: dt.timedelta, min_unit: str, suppress: list[str], expected: str
+) -> None:
+    assert (
+        humanize.precisedelta(val, minimum_unit=min_unit, suppress=suppress) == expected
+    )

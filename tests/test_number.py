@@ -377,3 +377,102 @@ def test_clamp(test_args: list[typing.Any], expected: str) -> None:
 )
 def test_metric(test_args: list[typing.Any], expected: str) -> None:
     assert humanize.metric(*test_args) == expected
+
+
+@pytest.mark.parametrize(
+    "test_args, expected",
+    [
+        # A negative sign never disables thousand-separation: the sign is
+        # kept and the digits are grouped as usual, with ndigits only
+        # controlling rounding after the decimal point.
+        ([-1234567.891, 2], "-1,234,567.89"),
+        (["-1234567.891", 2], "-1,234,567.89"),
+        ([-1000], "-1,000"),
+        (["-1000"], "-1,000"),
+    ],
+)
+def test_intcomma_negative(test_args: list[typing.Any], expected: str) -> None:
+    assert humanize.intcomma(*test_args) == expected
+
+
+def test_intcomma_scientific_notation_string() -> None:
+    """A scientific-notation string should be thousand-separated too.
+
+    Rule: any input that denotes a finite number -- negative, float, or
+    scientific notation -- goes through thousand-separation uniformly.
+
+    Actual: ``intcomma("1e6") == "1e6"`` (returned verbatim), while
+    ``intcomma(1e6) == "1,000,000.0"`` and ``intcomma("1.5e6") ==
+    "1,500,000.0"`` are both separated. The string branch tries ``int()``
+    whenever the value contains no ".", so "1e6" fails parsing and falls
+    back to ``str(value)``.
+
+    Judgment: the implementation is wrong. "1e6" is a parseable numeric
+    string (``float("1e6")`` works) and must render like the number it
+    denotes; the verbatim passthrough is an accident of the parse order,
+    not a rule. The assertion below encodes the expected behavior and
+    currently fails.
+    """
+    # This contrast case already works, because "1.5e6" contains a ".".
+    assert humanize.intcomma("1.5e6") == "1,500,000.0"
+    # Expected: the same rendering as intcomma(1e6). Actual: "1e6".
+    assert humanize.intcomma("1e6") == "1,000,000.0"
+
+
+@pytest.mark.parametrize(
+    "test_args, expected",
+    [
+        # The suffix is chosen by magnitude alone (bisect over powers of
+        # 1000); format only controls the precision of the numeric part.
+        ([10**12, "%.0f"], "1 trillion"),
+        ([10**12, "%.1f"], "1.0 trillion"),
+        ([10**12, "%.3f"], "1.000 trillion"),
+        # Rounding through format can carry into the next power; the suffix
+        # follows the carry instead of rendering "1000.0 <unit>".
+        ([999_999_999, "%.0f"], "1 billion"),
+        ([999_999_999_999, "%.1f"], "1.0 trillion"),
+    ],
+)
+def test_intword_suffix_and_format(test_args: list[typing.Any], expected: str) -> None:
+    assert humanize.intword(*test_args) == expected
+
+
+@pytest.mark.parametrize(
+    "test_input, expected",
+    [
+        # The denominator is capped at 1000, so a fraction close enough to
+        # 1 collapses to 1/1 and folds into the whole part.
+        (0.9999, "1"),
+        (1.9999, "2"),
+        # Exactly at the cap the fraction still stands on its own.
+        (0.999, "999/1000"),
+        # Above 1 the value splits into whole + fraction.
+        (1.5, "1 1/2"),
+        (1.25, "1 1/4"),
+    ],
+)
+def test_fractional_near_and_above_one(test_input: float, expected: str) -> None:
+    assert humanize.fractional(test_input) == expected
+
+
+@pytest.mark.parametrize(
+    "test_input, expected",
+    [
+        (11.5, "11.5"),
+        (-5.5, "-5.5"),
+    ],
+)
+def test_apnumber_non_integer(test_input: float, expected: str) -> None:
+    """A non-integer outside 0-9 should be returned as the number itself.
+
+    Rule: spell out 0-9, otherwise return the number unchanged.
+
+    Actual: ``apnumber(11.5) == "11"`` -- the value is truncated by
+    ``int()`` before the range check, silently dropping the fraction.
+
+    Judgment: the implementation is wrong. The docstring promises "the
+    number" for anything outside 0-9, and 11.5 in AP style is "11.5",
+    not "11". These assertions encode the expected behavior and
+    currently fail.
+    """
+    assert humanize.apnumber(test_input) == expected
