@@ -90,6 +90,24 @@ def test_intcomma_large_integer(sign: int) -> None:
     assert humanize.intcomma(value) == expected
 
 
+def test_intcomma_negative_number_uses_grouping() -> None:
+    assert humanize.intcomma(-1_234_567.891, 2) == "-1,234,567.89"
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "The implementation validates '1e6' with float() but only converts it "
+        "to int when the string contains '.', returning '1e6' unchanged. "
+        "Scientific notation is a valid numeric spelling and should follow the "
+        "same thousands-grouping rule, so the expected result is '1,000,000'; "
+        "the implementation is wrong."
+    ),
+)
+def test_intcomma_scientific_notation_is_grouped() -> None:
+    assert humanize.intcomma("1e6") == "1,000,000"
+
+
 def test_intword_powers() -> None:
     # make sure that powers & human_powers have the same number of items
     assert len(number.powers) == len(number.human_powers)
@@ -146,6 +164,10 @@ def test_intword_powers() -> None:
 )
 def test_intword(test_args: list[str], expected: str) -> None:
     assert humanize.intword(*test_args) == expected
+
+
+def test_intword_suffix_and_format_precision_boundaries() -> None:
+    assert humanize.intword(10**12, format="%.3f") == "1.000 trillion"
 
 
 def test_intword_rounding_rollover() -> None:
@@ -212,6 +234,19 @@ def test_apnumber(test_input: int | str, expected: str) -> None:
     assert humanize.apnumber(test_input) == expected
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "The implementation truncates non-integral values with int() before "
+        "applying AP style, turning 11.5 into '11'. AP wording applies to whole "
+        "numbers, so a non-integral value should remain '11.5'; the "
+        "implementation is wrong."
+    ),
+)
+def test_apnumber_non_integral_value_is_preserved() -> None:
+    assert humanize.apnumber(11.5) == "11.5"
+
+
 @pytest.mark.parametrize(
     "test_input, expected",
     [
@@ -243,6 +278,18 @@ def test_apnumber(test_input: int | str, expected: str) -> None:
     ],
 )
 def test_fractional(test_input: float | str, expected: str) -> None:
+    assert humanize.fractional(test_input) == expected
+
+
+@pytest.mark.parametrize(
+    "test_input, expected",
+    [
+        (0.9999, "1"),
+        (1.0001, "1"),
+        (1.001, "1 1/1000"),
+    ],
+)
+def test_fractional_rounding_around_one(test_input: float, expected: str) -> None:
     assert humanize.fractional(test_input) == expected
 
 

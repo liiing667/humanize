@@ -839,6 +839,25 @@ def test_precisedelta_suppress_units(
     )
 
 
+def test_precisedelta_negative_value_uses_smallest_unsuppressed_unit() -> None:
+    """Negative magnitudes use the kept minimum unit.
+
+    Negative deltas are converted to magnitudes first. Microseconds is the
+    minimum unit and is not suppressed, so it is kept; suppressing larger
+    hours and minutes only skips those decomposition steps.
+    """
+    delta = dt.timedelta(microseconds=-1)
+
+    assert (
+        humanize.precisedelta(
+            delta,
+            minimum_unit="microseconds",
+            suppress=("hours", "minutes"),
+        )
+        == "1 microsecond"
+    )
+
+
 def test_precisedelta_bogus_call() -> None:
     assert humanize.precisedelta(None) == "None"
 
